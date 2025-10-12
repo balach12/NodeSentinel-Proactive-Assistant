@@ -138,6 +138,8 @@ Logs are written to `nodesentinel.log` in the project directory.
 
 ---
 
+
+
 ## 🧰 Troubleshooting
 
 | Issue | Possible Fix |
@@ -154,7 +156,11 @@ Logs are written to `nodesentinel.log` in the project directory.
 See `requirements.txt` for all dependencies.
 
 ---
+## Support / Donate
 
+If you like this work and want to support it, you can donate via Lightning to `davidebtc@walletofsatoshi.com` or via BTC on-chain to `bc1qqksvzgksjgmffmggyg836h45le3d5aq5d5xqj0`. ⚡💰
+
+---
 ## 💡 Contributing
 Pull requests welcome! For issues, open a GitHub ticket.
 
