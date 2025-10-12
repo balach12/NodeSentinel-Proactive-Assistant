@@ -1,38 +1,162 @@
-NodeSentinel: Proactive Assistant for Bitcoin & Lightning Nodes
-NodeSentinel is a resilient, Python-based Telegram assistant designed to proactively monitor the health of your remote Bitcoin/LND node, its hardware, and critical crypto market conditions. It leverages the Gemini AI API for stable, real-time contextual analysis on price movements.
+# 🛰️ NodeSentinel Proactive Assistant
+**Proactive Bitcoin & Lightning Node Assistant**
 
-🚀 Key Features
-Proactive AI Surveillance: Alerts on price volatility ($3,000+ swings) with instant, AI-generated contextual analysis (using your GEMINI_API_KEY).
+NodeSentinel is a **Python-based Telegram and monitoring assistant** designed to proactively analyze and alert Bitcoin/Lightning node operators about:
+- **Network fees (Mempool)** and **on-chain conditions**
+- **BTC price volatility**, macroeconomic context (via Gemini AI)
+- Optional **LND integration via gRPC** for advanced Lightning metrics
 
-Stateful Fee Monitoring: Notifies on changes in fee state (LOW, MEDIUM, HIGH) without repeating the same alert.
+---
 
-Remote Hardware Monitoring: Checks CPU, RAM, Load Average, and Disks on your node via SSH with persistence filters (3 minutes) to eliminate false positives.
+## 🧩 Features
+- Real-time monitoring of **fees, difficulty, and price**
+- AI contextual analysis of market movements (Gemini API)
+- 24h periodic macro reports
+- Alerts via Telegram
+- Compatible with both **local** (same machine as node) or **remote** setups
 
-Diagnostics & Remote Action: Secure commands (/diagnose, /restartlnd, /restartbtc) to manage services remotely.
+---
 
-Network Scanner: Use /netscan for lightweight network discovery on your local LAN.
+## 🖥️ Recommended OS
+- **Ubuntu 22.04 LTS**
+- Python ≥ 3.9
 
-📋 1. Local Setup and Requirements
-Prerequisites
-Python 3.8+
+---
 
-SSH Key Access: The user running this bot (e.g., ubuntu or admin) must have an SSH key configured to access the remote Bitcoin node without a password.
+## 📦 Installation
 
-LND Credentials: You must obtain copies of your tls.cert and admin.macaroon files from your LND node.
+### 1. Clone Repository
+```bash
+git clone https://github.com/asyscom/NodeSentinel-Proactive-Assistant.git
+cd NodeSentinel-Proactive-Assistant
+```
 
-Installation
-Clone your repository and install dependencies. We recommend using a virtual environment (venv):
+### 2. Create Virtual Environment & Install Dependencies
+```bash
+sudo apt update && sudo apt install -y python3-venv python3-pip
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
 
-# Create and activate the virtual environment
-python3 -m venv venv_nodesentinel
-source venv_nodesentinel/bin/activate
+---
 
-# Install all required dependencies
-pip install lndgrpc python-telegram-bot psutil python-dotenv httpx
+## ⚙️ Environment Configuration
 
-🔐 2. Configuration Scenarios (Crucial Step)
-The performance of NodeSentinel depends on setting the correct paths and IPs in the .env file based on your setup.
+Create a `.env` file in the project root with:
 
-A. Credential Files Placement (MUST COPY)
-Regardless of where the bot runs, you must copy your LND credentials (tls.cert and admin.macaroon) from the Node Machine to the Bot Machine. The paths in your .env must point to these local copies.
+```bash
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_CHAT_ID=your_chat_id_here
+GEMINI_API_KEY=your_gemini_api_key_here
+NODE_MODE=local   # or remote
+LND_GRPC_HOST=127.0.0.1:10009
+LND_TLS_PATH=/path/to/tls.cert
+LND_MACAROON_PATH=/path/to/admin.macaroon
+```
 
+---
+
+## 🧠 Generating LND gRPC Files
+
+If your bot interacts directly with `lnd`, you must generate the following files:
+- `lightning_pb2.py`
+- `lightning_pb2_grpc.py`
+
+Use the included script:
+
+```bash
+chmod +x generate_lnd_proto.sh
+./generate_lnd_proto.sh
+```
+
+This script automatically clones the LND repo and builds the Python bindings.
+
+---
+
+## 🛰️ Running NodeSentinel
+
+### Option 1: Run directly
+```bash
+source venv/bin/activate
+python3 nodesentinel.py
+```
+
+### Option 2: Run as systemd service
+
+Example unit file: `/etc/systemd/system/nodesentinel.service`
+
+```ini
+[Unit]
+Description=NodeSentinel Proactive Assistant
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/NodeSentinel-Proactive-Assistant
+ExecStart=/home/ubuntu/NodeSentinel-Proactive-Assistant/venv/bin/python3 nodesentinel.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start it:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable nodesentinel
+sudo systemctl start nodesentinel
+```
+
+---
+
+## 🌍 Remote Setup (Bot on Separate Machine)
+
+When NodeSentinel runs on a **different host** than your LND node:
+
+1. **Generate SSH key** on the bot machine:
+```bash
+ssh-keygen -t ed25519
+ssh-copy-id user@node-ip
+```
+
+2. **Use pull-secrets.sh** (optional helper script) to securely copy:
+```bash
+./pull-secrets.sh user@node-ip:/path/to/lnd
+```
+
+This will retrieve `tls.cert` and `admin.macaroon` securely and adjust permissions automatically.
+
+3. Set correct paths in `.env` accordingly.
+
+---
+
+## 🧾 Logging
+
+Logs are written to `nodesentinel.log` in the project directory.
+
+---
+
+## 🧰 Troubleshooting
+
+| Issue | Possible Fix |
+|-------|---------------|
+| `Mempool API Error` | Ensure HTTPS and endpoint accessibility |
+| `Price API Error` | CoinGecko rate limit, wait 10s |
+| `Contextual Analysis Failed` | Check `GEMINI_API_KEY` |
+| `gRPC Error: Unavailable` | Verify LND port (10009) and TLS/macaroons |
+
+---
+
+## 🧱 Requirements Summary
+
+See `requirements.txt` for all dependencies.
+
+---
+
+## 💡 Contributing
+Pull requests welcome! For issues, open a GitHub ticket.
+
+---
+© 2025 NodeSentinel Project — Bitcoin-native monitoring & intelligence tool.

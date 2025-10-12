@@ -1,0 +1,7 @@
+httpx
+python-dotenv
+grpcio
+grpcio-tools
+protobuf
+asyncio
+logging
