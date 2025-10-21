@@ -209,7 +209,6 @@ async def run_remote_command(command, timeout=DEFAULT_SSH_TIMEOUT):
         logger.error(f"SSH Error (code {e.returncode}): {err_msg}")
         return None, f"⚠️ SSH Error (code {e.returncode}): {err_msg}"
     except subprocess.TimeoutExpired:
-        logger.error("Remote SSH Timeout.")
         return None, "⚠️ Remote SSH Timeout (node unresponsive)"
     except Exception as e:
         logger.error(f"Generic SSH error: {e}")
@@ -529,8 +528,13 @@ async def monitor_lnd_task(app):
                 newch = cur_ch - prev_channels
                 closed = prev_channels - cur_ch
                 for cp in newch:
+                    # CORREZIONE: Recupera l'alias del partner del canale
+                    remote_pubkey = next((c.remote_pubkey for c in channels if c.channel_point == cp), None)
+                    alias = get_alias_for_pubkey(client, remote_pubkey) if remote_pubkey else None
+                    display_name = alias or remote_pubkey[:10] + '...'
+
                     logger.info(f"Channel Opened: {cp}")
-                    await send_alert(app, f"🔔 Channel Opened: **{cp}**")
+                    await send_alert(app, f"🔔 Channel Opened with **{display_name}**")
                 for cp in closed:
                     logger.info(f"Channel Closed: {cp}")
                     await send_alert(app, f"🔕 Channel Closed: **{cp}**")
@@ -542,15 +546,25 @@ async def monitor_lnd_task(app):
             try:
                 invoices = client.list_invoices().invoices
                 cur_settled = set()
+                # CORREZIONE: Ottenere il valore in sats e formattare l'alert
                 for inv in invoices:
                     settled = getattr(inv, "settled", False)
                     if settled:
-                        r = getattr(inv, "r_hash_str", None) or str(getattr(inv, "add_index", ""))
-                        cur_settled.add(r)
-                new_settled = cur_settled - prev_settled_invoices
-                for r in new_settled:
-                    logger.info(f"Invoice Settled: {r}")
-                    await send_alert(app, f"💰 Invoice Settled: **{r}**")
+                        # Usiamo r_hash_str come chiave per lo stato
+                        r_hash = getattr(inv, "r_hash_str", None) or str(getattr(inv, "add_index", ""))
+                        value_sats = getattr(inv, "value", 0) 
+                        cur_settled.add((r_hash, value_sats)) 
+                
+                # Calcola le nuove fatture saldate
+                new_settled = [ (rh, val) for rh, val in cur_settled if rh not in set(rh_prev for rh_prev, val_prev in prev_settled_invoices) ]
+                removed_settled = [ (rh, val) for rh, val in prev_settled_invoices if rh not in set(rh_curr for rh_curr, val_curr in cur_settled) ]
+
+                for rh, value_sats in new_settled:
+                    logger.info(f"Invoice Settled: {rh} for {value_sats} sats")
+                    # INVIO ALERT CON VALORE CORRETTO E TRADOTTO
+                    await send_alert(app, f"💰 Invoice Settled: **{value_sats:,} sats**")
+                
+                # Aggiorna lo stato dei pagamenti
                 prev_settled_invoices = cur_settled
             except Exception as e:
                 await send_alert(app, f"⚠️ LND invoices error: {e}")
@@ -691,7 +705,7 @@ async def restartlnd_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(final_msg, parse_mode='Markdown')
 
 async def mempool_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Command /mempool received from {update.effective_user.id}")
+    logger.info(f"Comando /mempool ricevuto da {update.effective_user.id}")
     fees, error = await crypto_utils.get_fee_data()
     
     if error:
@@ -699,17 +713,17 @@ async def mempool_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     report = (
-        f"⛽ Mempool Fees (sat/vB):\n"
-        f"- Fast (Next block): **{fees.get('fastestFee', 'n/a')}**\n"
-        f"- Medium (30 min): **{fees.get('halfHourFee', 'n/a')}**\n"
-        f"- Low (1 hr): **{fees.get('hourFee', 'n/a')}**"
+        f"⛽ Tariffe Mempool Attuali (sat/vB):\n"
+        f"- Veloce (Next block): **{fees.get('fastestFee', 'n/d')}**\n"
+        f"- Media (30 min): **{fees.get('halfHourFee', 'n/d')}**\n"
+        f"- Bassa (1 hr): **{fees.get('hourFee', 'n/d')}**"
     )
     
     await update.message.reply_text(report, parse_mode='Markdown')
 
 
 async def btcinfo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Command /btcinfo received from {update.effective_user.id}")
+    logger.info(f"Comando /btcinfo ricevuto da {update.effective_user.id}")
     
     info, error = await crypto_utils.get_onchain_info()
     
@@ -724,31 +738,31 @@ async def btcinfo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     adj_date = time.strftime('%d-%m-%Y %H:%M UTC', time.localtime(ts))
     
     report = (
-        f"📊 **Bitcoin On-Chain Analysis**\n"
+        f"📊 **Analisi On-Chain Bitcoin**\n"
         f"----------------------------------------\n"
-        f"⚒️ Current Difficulty: **{formatted_difficulty:.2f} T**\n"
-        f"⚙️ Adjustment Progress: **{info['adjustment_progress']:.2f}%**\n"
-        f"🧱 Remaining Blocks: **{info['blocks_remaining']}**\n"
-        f"⏳ Estimated Next Adjustment: *{adj_date}*\n"
+        f"⚒️ Difficoltà Attuale: **{formatted_difficulty:.2f} T**\n"
+        f"⚙️ Progresso Aggiustamento: **{info['adjustment_progress']:.2f}%**\n"
+        f"🧱 Blocchi Rimanenti: **{info['blocks_remaining']}**\n"
+        f"⏳ Stima Prossimo Aggiustamento: *{adj_date}*\n"
     )
     
     if info['adjustment_progress'] > 80:
-        report += "\n🔔 *Note: Difficulty adjustment is imminent (over 80%).*"
+        report += "\n🔔 *Nota: L'aggiustamento della difficoltà è imminente (oltre l'80%).*"
 
     await update.message.reply_text(report, parse_mode='Markdown')
 
 async def price_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Command /price received from {update.effective_user.id}")
+    logger.info(f"Comando /price ricevuto da {update.effective_user.id}")
     
     currency = context.args[0] if context.args else "EUR" 
     prices, error = await crypto_utils.get_price_data(currency=currency)
     
     if error or not prices:
-        await update.message.reply_text(f"⚠️ Error retrieving prices: {error or 'Data missing'}")
+        await update.message.reply_text(f"⚠️ Errore nel recupero dei prezzi: {error or 'Dati mancanti'}")
         return
 
     report = (
-        f"💸 Current Bitcoin Prices:\n"
+        f"💸 Prezzi Attuali di Bitcoin:\n"
         f"- BTC/EUR: **€{prices.get('eur', 0):,.2f}**\n"
         f"- BTC/USD: **${prices.get('usd', 0):,.2f}**"
     )
@@ -757,7 +771,7 @@ async def price_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def peers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Command /peers received from {update.effective_user.id}")
+    logger.info(f"Comando /peers ricevuto da {update.effective_user.id}")
     
     def escape_html(text):
         if text is None:
@@ -770,7 +784,7 @@ async def peers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         client = get_lnd_client()
         peers = client.list_peers().peers
         if not peers:
-            await update.message.reply_text("No connected peers")
+            await update.message.reply_text("Nessun peer connesso")
             return
             
         lines = []
@@ -779,7 +793,7 @@ async def peers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             addr = getattr(p, "address", "")
             alias = get_alias_for_pubkey(client, pk) 
             
-            # Sanitize dynamic elements and use HTML <b> for bold
+            # Sanifica tutti gli elementi dinamici e usa l'HTML per il grassetto (<b>)
             display_alias = alias or pk[:10] + '...'
             safe_alias = escape_html(display_alias)
             safe_pk = escape_html(pk)
@@ -787,39 +801,39 @@ async def peers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             lines.append(f"- <b>{safe_alias}</b> ({safe_pk}) {safe_addr}")
         
-        msg = "🔗 Active Peers:\n" + "\n".join(lines)
+        msg = "🔗 Peers attivi:\n" + "\n".join(lines)
         
         # Send in HTML mode
         await update.message.reply_text(msg, parse_mode='HTML') 
         
     except Exception as e:
-        logger.error(f"Error executing /peers command: {e}")
+        logger.error(f"Errore comando /peers: {e}")
         await update.message.reply_text(f"⚠️ LND error: {e}")
 
 async def channels_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Command /channels received from {update.effective_user.id}")
+    logger.info(f"Comando /channels ricevuto da {update.effective_user.id}")
     try:
         client = get_lnd_client()
         channels = client.list_channels().channels
         if not channels:
-            await update.message.reply_text("No open channels")
+            await update.message.reply_text("Nessun canale aperto")
             return
-        msg = "🔔 Open Channels:\n" + "\n".join(f"- **{getattr(c,'remote_pubkey','?')[:10] + '...'}** ({getattr(c,'capacity','?')} sats)" for c in channels)
+        msg = "🔔 Canali Aperti:\n" + "\n".join(f"- **{getattr(c,'remote_pubkey','?')[:10] + '...'}** ({getattr(c,'capacity','?')} sats)" for c in channels)
         await update.message.reply_text(msg, parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"Error executing /channels command: {e}")
+        logger.error(f"Errore comando /channels: {e}")
         await update.message.reply_text(f"⚠️ LND error: {e}")
 
 async def invoices_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Command /invoices received from {update.effective_user.id}")
+    logger.info(f"Comando /invoices ricevuto da {update.effective_user.id}")
     try:
         client = get_lnd_client()
         invoices = client.list_invoices().invoices
         if not invoices:
-            await update.message.reply_text("No invoices")
+            await update.message.reply_text("Nessuna invoice")
             return
         last = invoices[-10:]
-        msg = "💰 Last Invoices (max 10):\n"
+        msg = "💰 Ultime Invoice (max 10):\n"
         for i in last:
             memo = getattr(i, "memo", "")
             value = getattr(i, "value", 0)
@@ -828,36 +842,36 @@ async def invoices_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"- *{memo}* : **{value} sats** - Status: {status_emoji}\n"
         await update.message.reply_text(msg, parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"Error executing /invoices command: {e}")
+        logger.error(f"Errore comando /invoices: {e}")
         await update.message.reply_text(f"⚠️ LND error: {e}")
 
 async def hardware_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Command /hardware received from {update.effective_user.id}")
-    # Remote Hardware Status
+    logger.info(f"Comando /hardware ricevuto da {update.effective_user.id}")
+    # Stato Hardware Remoto del NODO (CPU/RAM/Load)
     remote_data, remote_system_report = await get_remote_system_status() 
     
-    # Remote Disk Status
+    # Stato Dischi Remoto del NODO
     remote_disk_report, _ = await get_remote_disk_status(REMOTE_MOUNTS_TO_CHECK) 
     
     final_message = (
-        f"--- 💾 Hardware NODE (Remote) ---\n"
+        f"--- 💾 Hardware NODO Bitcoin (Remoto) ---\n"
         f"{remote_system_report}\n"
-        f"Disks:\n"
+        f"Dischi:\n"
         f"{remote_disk_report}"
     )
     await update.message.reply_text(final_message, parse_mode='Markdown')
 
 
 async def netscan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Command /netscan received from {update.effective_user.id}")
+    logger.info(f"Comando /netscan ricevuto da {update.effective_user.id}")
     
     if not context.args or len(context.args) < 1:
-        await update.message.reply_text("⚠️ Usage: /netscan <subnet_base> (E.g.: /netscan 10.21.10)", parse_mode='Markdown')
+        await update.message.reply_text("⚠️ Uso: /netscan <subnet_base> (Es: /netscan 10.21.10)", parse_mode='Markdown')
         return
         
     subnet_base = context.args[0].strip()
     
-    await update.message.reply_text(f"⏳ Starting lightweight ping scan on subnet **{subnet_base}.x** (May take up to 2 minutes)...", parse_mode='Markdown')
+    await update.message.reply_text(f"⏳ Avvio scansione ping leggera sulla subnet **{subnet_base}.x** (Potrebbe richiedere fino a 2 minuti)...", parse_mode='Markdown')
 
     # SSH Scan Command (ping sweep from the remote node)
     SCAN_CMD = (
@@ -867,38 +881,38 @@ async def netscan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     output, error = await run_remote_command(SCAN_CMD, timeout=120) 
 
     if error:
-        report = f"❌ **SCAN FAILED!** Error during SSH execution: {error}"
+        report = f"❌ **SCAN FALLITO!** Errore durante l'esecuzione SSH: {error}"
     elif not output:
-        report = f"🔍 **SCAN COMPLETE:** No active hosts detected on subnet **{subnet_base}.x**."
+        report = f"🔍 **SCAN COMPLETATO:** Nessun host attivo rilevato sulla subnet **{subnet_base}.x**."
     else:
         active_hosts = output.replace('Host up: ', '- ').replace(':', '').splitlines()
-        report = f"✅ **SCAN COMPLETE:** Detected **{len(active_hosts)}** active hosts on **{subnet_base}.x**:\n" + "\n".join(active_hosts)
+        report = f"✅ **SCAN COMPLETATO:** Rilevati **{len(active_hosts)}** host attivi su **{subnet_base}.x**:\n" + "\n".join(active_hosts)
         
     await update.message.reply_text(report, parse_mode='Markdown')
 
 
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    logger.info("Telegram Bot started.") 
+    logger.info("Bot Telegram avviato.") 
 
     await app.bot.set_my_commands([
-        BotCommand("start", "Start the bot"),
-        BotCommand("status", "Show node status"), 
-        BotCommand("peers", "List active peers"),
-        BotCommand("channels", "List open channels"),
-        BotCommand("invoices", "Last invoices"),
-        BotCommand("hardware", "Node hardware status"),
+        BotCommand("start", "Avvia il bot"),
+        BotCommand("status", "Mostra lo stato del nodo"), 
+        BotCommand("peers", "Lista dei peers"),
+        BotCommand("channels", "Lista dei canali"),
+        BotCommand("invoices", "Ultime invoice"),
+        BotCommand("hardware", "Stato hardware del NODO"),
         
-        # MONITORING AND MARKET
-        BotCommand("mempool", "BTC transaction fees (sat/vB)"),
-        BotCommand("price", "BTC price in fiat (e.g., /price USD)"),
-        BotCommand("btcinfo", "Bitcoin Difficulty and Adjustment Analysis"),
+        # MONITORAGGIO E MERCATO
+        BotCommand("mempool", "Tariffe transazione BTC (sat/vB)"),
+        BotCommand("price", "Prezzo BTC in EUR/USD (es. /price USD)"),
+        BotCommand("btcinfo", "Analisi Difficoltà e Aggiustamento Bitcoin"),
         
-        # DIAGNOSTICS AND REMOTE ACTIONS
-        BotCommand("diagnose", "Status of LND and Bitcoin Core services"), 
-        BotCommand("restartlnd", "Restart LND service (Admin Only)"),
-        BotCommand("restartbtc", "Restart Bitcoin Core (Admin Only)"),
-        BotCommand("netscan", "Perform local network scan")
+        # DIAGNOSI E AZIONI REMOTE
+        BotCommand("diagnose", "Stato dei servizi LND e Bitcoin Core"), 
+        BotCommand("restartlnd", "Riavvia il servizio LND (Solo Admin)"),
+        BotCommand("restartbtc", "Riavvia Bitcoin Core (Solo Admin)"),
+        BotCommand("netscan", "Scansione di rete locale")
     ])
 
     app.add_handler(CommandHandler("start", start_cmd))
@@ -909,7 +923,7 @@ async def main():
     app.add_handler(CommandHandler("hardware", hardware_cmd))
     app.add_handler(CommandHandler("netscan", netscan_cmd))
     
-    # REGISTER NEW HANDLERS
+    # REGISTRAZIONE NUOVI HANDLER
     app.add_handler(CommandHandler("mempool", mempool_cmd)) 
     app.add_handler(CommandHandler("price", price_cmd))
     app.add_handler(CommandHandler("btcinfo", btcinfo_cmd))
@@ -922,8 +936,8 @@ async def main():
     loop.create_task(monitor_lnd_task(app))
     loop.create_task(crypto_utils.surveillance_task(app))
 
-    print("=== NodeSentinel Live & Fully Operational ===")
-    logger.info("Starting polling...")
+    print("=== NodeSentinel Live & Full Running ===")
+    logger.info("Avvio del polling...")
     await app.run_polling()
 
 # ---------- Run ----------
@@ -939,4 +953,3 @@ if __name__ == "__main__":
         loop.run_until_complete(main())
     finally:
         pass
-
